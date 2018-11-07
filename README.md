@@ -17,7 +17,7 @@ Uses calls from [this page](https://www.secure.bbox.bouyguestelecom.fr/services/
 pip install bouygues_pysms
 ```
 ### Auth and Get quota left
-**Left quota is checked at sms sending, no need to double check it (_don't put a sms.send in the getQuota callback_)**
+**Login and retrieve some info from the API (left quota and sending number) before using the quota**
 ```python
 from bouygues_pysms import BouyguesClient
 
@@ -25,7 +25,7 @@ b = BouyguesClient(lastname='insert_lastname', user="insert_username", passwd="i
 b.login()
 ```
 ### Send "Hello World!" 
-**Left quota is checked at sms sending, no need to double check it (_if sent number is not specified SMS is sent to the sender number_)**
+**Left quota is checked at sms sending, no need to double check it (_if the 'send to' number is not specified, the SMS is sent to the sending number_)**
 ```python
 from bouygues_pysms import BouyguesClient
 
@@ -33,7 +33,8 @@ b = BouyguesClient(lastname='insert_lastname', user="insert_username", passwd="i
 b.send('Hello World')
 ```
 ### Send to multiple numbers (up to 5)
-**If more than 5 numbers is submitted, the code take the 5 first. If the 160 chars limit is reached, the nessage is cut.**
+**If more than 5 numbers is submitted, the code take the 5 first. 
+If the 160 chars limit is reached, the message is cut.**
 ```python 
 from bouygues_pysms import BouyguesClient
 
