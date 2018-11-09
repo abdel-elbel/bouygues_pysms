@@ -21,25 +21,25 @@ pip install bouygues_pysms
 ```python
 from bouygues_pysms import BouyguesClient
 
-b = BouyguesClient(lastname='insert_lastname', user="insert_username", passwd="insert_passwd" )
+b = BouyguesClient('insert_lastname', 'insert_username', 'insert_passwd')
 b.login()
 ```
-### Send "Hello World!" 
+### Send 'Hello World!' 
 **Left quota is checked at sms sending, no need to double check it (_if the 'send to' number is not specified, the SMS is sent to the sending number_)**
 ```python
 from bouygues_pysms import BouyguesClient
 
-b = BouyguesClient(lastname='insert_lastname', user="insert_username", passwd="insert_passwd" )
+b = BouyguesClient('insert_lastname', 'insert_username', 'insert_passwd')
 b.send('Hello World')
 ```
 ### Send to multiple numbers (up to 5)
-**If more than 5 numbers is submitted, the code take the 5 first. 
+**If more than 5 numbers is submitted, the module takes the 5 first. 
 If the 160 chars limit is reached, the message is cut.**
 ```python 
 from bouygues_pysms import BouyguesClient
 
-b = BouyguesClient(lastname='insert_lastname', user="insert_username", passwd="insert_passwd" )
-b.send('Hello World'* 15, ["0600000001", "0600000002", "0600000003", "0600000004", "0600000005"])
+b = BouyguesClient('insert_lastname', 'insert_username', 'insert_passwd')
+b.send('Hello World'* 15, ['0600000001', '0600000002', '0600000003', '0600000004', '0600000005'])
 ```
 ### Error codes
 | Code             | Meaning                                                                    |
