@@ -11,20 +11,24 @@ See:
 
 import requests
 import re
+import logging
 
 __version__ = '0.0.1'
+_LOGGER = logging.getLogger(__name__)
+
+LOGIN_URL = 'https://www.mon-compte.bouyguestelecom.fr/cas/login'
+API_URL = 'https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD'
 
 
 class BouyguesClient(object):
     """
-    The Bouygues Telecom Mobile client uses 3 URLs :
-    # login : https://www.mon-compte.bouyguestelecom.fr/cas/login
-    # step 1 : https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/sendSMS.phtml
-    # step 2 : https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/confirmSendSMS.phtml
-    # step 3 : https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/resultSendSMS.phtml
+    The Bouygues Telecom Mobile client uses 4 URLs :
+    # LOGIN_URL : https://www.mon-compte.bouyguestelecom.fr/cas/login
+    # API_URL step 1 : https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/sendSMS.phtml
+    # API_URL step 2 : https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/confirmSendSMS.phtml
+    # API_URL step 3 : https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/resultSendSMS.phtml
     """
         
-
     def __init__(self, lastname, user, passwd):
         """
         Create a new Bouygues Telecom Mobile client.
@@ -32,16 +36,18 @@ class BouyguesClient(object):
         self._lastname = lastname
         self._user = user
         self._passwd = passwd
-
-        print('Profile created')
+        _LOGGER.info('Profile created')
         
     def login(self):
+        from requests.utils import quote
         """
-        Loging in to the Bouygues Telecom site using the credentials through :
+        Login to the Bouygues Telecom site using the credentials through :
         1 - Authenticate + Get sessionId & lt
-        2 - Login to base URL using sessionId & lt
-        3 - Access to base URL and retrieve info
+        2 - Login to API URL using sessionId & lt
+        3 - Access to API URL and retrieve info
         """
+        BASE_URL_1 = "{}/sendSMS.phtml".format(API_URL)
+        
     #==========================================================================
     #  PART 1 - Authenticate + Get sessionId & lt
     #==========================================================================
@@ -49,22 +55,23 @@ class BouyguesClient(object):
         lastname = self._lastname 
         username = self._user
         password = self._passwd
-        code=''
+        code = ''
          
-        print("Authenticating..")
+        _LOGGER.info("Authenticating..")
         sess = requests.Session()
-        response = sess.get("https://www.mon-compte.bouyguestelecom.fr/cas/login") #SIGNIN_URL 
+        response = sess.get(LOGIN_URL) 
     
         jsessionid = re.search(b'JSESSIONID=(.*); Path=\/cas\/; HttpOnly'.decode('utf-8'),  response.headers["set-cookie"])
         lt = re.search('<input type=\"hidden\" name=\"lt\" value=\"([a-zA-Z0-9_-]*)\"', response.content.decode('utf-8'))
         
         if (jsessionid == None) | (lt == None):
             code = "LOGIN_UNKNOWN"
+            return code
         else:
             jsessionid = jsessionid.groups()[0] 
             lt = lt.groups()[0]
-            print("Got jsessionid " + jsessionid);
-            print("Got lt value " + lt);
+            _LOGGER.info("Got jsessionid " + jsessionid);
+            _LOGGER.info("Got lt value " + lt);
     
     #==========================================================================
     #  PART 2 - Login to base URL using sessionId & lt
@@ -80,35 +87,38 @@ class BouyguesClient(object):
                   'execution': 'e1s1',
                   '_eventId': 'submit'
                   }
-                  
-        response = sess.post("https://www.mon-compte.bouyguestelecom.fr/cas/login;jsessionid=" + jsessionid + "?service=https%3A%2F%2Fwww.secure.bbox.bouyguestelecom.fr%2Fservices%2FSMSIHD%2FsendSMS.phtml", data = postData)  #BASE_URL='https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/sendSMS.phtml'        
+        
+        BASE_URL_1_encoded = quote(BASE_URL_1, safe='')
+        url = LOGIN_URL + ";jsessionid=" + jsessionid + "?service=" + BASE_URL_1_encoded
+        response = sess.post(url, data = postData)       
         err = re.search('<p class=\"color-mid-grey\">Votre identifiant ou votre mot de passe est incorrect<\/p>', response.content.decode('utf-8'))
         
         if err != None :
             code = "LOGIN_WRONG"
-            print(code)
+            return code
         else :
-            print("Authenticated successfully!")
+            _LOGGER.info("Authenticated successfully!")
             self._session = sess
             
     #==========================================================================
     #  PART 3 - Access to base URL and retrieve info
     #==========================================================================
             
-        response = sess.get("https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/sendSMS.phtml")  
+        response = sess.get(BASE_URL_1)  
         
         #quota
         quota = re.search(b'Il vous reste <strong>(\d*) SMS gratuit\(s\)<\/strong>', response.content)
 
         if quota == None :
             code = "ERROR_GETQUOTA"
-            print(code)
+            return code
         else :
             quota = quota.groups()[0].decode("utf-8") 
-            print(quota + "/5 message(s) left")
+            _LOGGER.info(quota + "/5 message(s) left")
             
         if int(quota) == 0:
-            code="QUOTA_EXCEEDED"
+            code = "QUOTA_EXCEEDED"
+            return code
                 
         self.quota = int(quota)
         
@@ -117,30 +127,31 @@ class BouyguesClient(object):
     
         if sender == None :
             code = "ERROR_GETSENDERNUMBER"
-            print(code)
+            return code
         else :
             sender = sender.groups()[0].decode("utf-8") 
-            print(sender + " is the sender's number")
+            _LOGGER.info(sender + " is the sender's number")
             sender = sender.replace(" ", "")
             
         self.sender = sender
                 
         return code
   
-    def send(self, msg, numbers=None):
+    def send(self, msg, numbers=[]):
         err = self.login()
         maxLength = 160
         sep = ';'
         
         if err :
-            print('Message not sent due to error : %s' % err)
+            _LOGGER.error('Message not sent due to login error : %s' % err)
         else :
-            quota=self.quota
+            quota = self.quota
             
             if numbers:
                 if isinstance(numbers, list):
+                    numbers = list(set(numbers))
                     if len(numbers) > int(quota):
-                        print('WARNING : too many numbers to send to. Only the %s first numbers will be used' % quota)
+                        _LOGGER.warning('WARNING : too many numbers to send to. Only the %s first numbers will be used' % quota)
                         numbers = numbers[0:(quota-len(numbers))]
                         
                     numbers = sep.join(numbers)
@@ -148,16 +159,19 @@ class BouyguesClient(object):
                 numbers = self.sender
             
             if len(msg) > maxLength : 
-                print('WARNING : message have been cut to %s characters to respect the max length ' % maxLength)
+                _LOGGER.warning('WARNING : message have been cut to %s characters to respect the max length ' % maxLength)
                 msg = str(msg)[0:maxLength]
             
             return self.sendSMS(msg, numbers)
 
             
     def sendSMS(self, msg, numbers):
-        print(msg, numbers)
+        _LOGGER.info("Sending %s to %s.." % (msg, numbers))
         sess = self._session
         code = ''
+        BASE_URL_1 = "{}/sendSMS.phtml".format(API_URL)
+        BASE_URL_2 = "{}/confirmSendSMS.phtml".format(API_URL)
+        BASE_URL_3 = "{}/resultSendSMS.phtml".format(API_URL)
         
         
     #==========================================================================
@@ -171,12 +185,13 @@ class BouyguesClient(object):
                     'Verif.y': '17'
                     }
         
-        step1 = sess.post("https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/confirmSendSMS.phtml", postdata)  
+        
+        step1 = sess.post(BASE_URL_2, postdata)  
         
         err = re.search('Suite \xc3\xa0 un probl\xc3\xa8me technique, nous ne sommes pas en mesure de r\xc3\xa9pondre \xc3\xa0 votre demande.', step1.content.decode("utf-8"))        
         if err != None :
             code = "CODE_ERROR_1003 : Technical problem encountered"
-            print(code)   
+            return code
         else:
             verify = re.search('<span class=\"titre\" style=\"float:left;\">Validation<\/span>', step1.content.decode("utf-8"))
             if verify != None :
@@ -185,7 +200,7 @@ class BouyguesClient(object):
     #  Step 2 : 'validation', 'envoyer'
     #==========================================================================
     
-                print("SMS_CONFIRMATION")
+                _LOGGER.info("SMS Confirmation page..")
                 
                 postdata = {
                             'msisdn': numbers,
@@ -193,18 +208,18 @@ class BouyguesClient(object):
                             'Verif.x': '79',
                             'Verif.y': '17'
                             }
-        
-                step2 = sess.post("https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/SendSMS.phtml", postdata) 
+                BASE_URL_1 = "{}/sendSMS.phtml".format(API_URL)
+                step2 = sess.post(BASE_URL_1, postdata) 
                 
     #==========================================================================
-    #  PART 3 - Step 3 : 'result', 'envoyer'
+    #  Step 3 : 'result', 'envoyer'
     #==========================================================================
-    
-                step3 = sess.get("https://www.secure.bbox.bouyguestelecom.fr/services/SMSIHD/resultSendSMS.phtml")  
+                
+                step3 = sess.get(BASE_URL_3)  
                 verify = re.search('Votre message a bien été envoyé au numéro', 
                                    step3.content.decode("utf-8"))
                 if verify != None :
-                    print("SMS_SENT")
+                    _LOGGER.info("SMS Sent !")
                 
         sess.close()
         return code
